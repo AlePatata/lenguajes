@@ -1,11 +1,14 @@
 #lang play
 
 (print-only-errors #t)
+(require math/flonum)
+
 
 #| 
    <CFraction> ::= <simple> | <compound>  
    <simple> ::= <number>
-   <compound> ::= <number> <number> <CFraction> |#
+   <compound> ::= <number> <number> <CFraction> 
+|#
 (deftype CFraction
    (simple value)
    (compound integer numerator denominator))
@@ -21,6 +24,7 @@
 (test (eval (simple 1)) 1)
 (test (eval (compound 1 1 (simple 1))) (+ 1 (/ 1 1)))
 (test (eval (compound 3 2 (compound 1 1 (simple 4)))) (+ 3 (/ 2 (+ 1 (/ 1 4)))))
+(test (eval (compound 6 1 (compound 6 9 (compound 6 25 (simple 6))))) (+ 6 (/ 1 (+ 6 (/ 9 (+ 6 (/ 25 6)))))))
 
 ; ; degree :: CFraction -> Integer
 ; ; Devuelve el grado de una fracción continua
@@ -70,9 +74,6 @@
 (test (degree-fold-cfraction (compound 1 1 (compound 1 1 (simple 1)))) 2)
 (test (degree-fold-cfraction (compound 567 123 (compound 234 987 (compound 678 89 (simple 9))))) 3)
 
-
-
-
 ; ; mysterious-cf :: Integer -> CFraction
 (define (mysterious-cf n)
    (define (aux n odd)
@@ -82,24 +83,54 @@
       ))
    (aux n 1))
 
-
-
 ; ; test
 (test (mysterious-cf 0) (simple 6))
 (test (mysterious-cf 1) (compound 6 (sqr 1) (simple 6)))
 (test (mysterious-cf 2) (compound 6 (sqr 1) (compound 6 (sqr 3) (simple 6))))
+(test (mysterious-cf 3) (compound 6 (sqr 1) (compound 6 (sqr 3) (compound 6 (sqr 5) (simple 6)))))
 
 
 ; ; from-to :: Integer Integer -> ListOf Integer
 (define (from-to i j)
    (if (< i j)
-      (append (from-to i (- j 1)) (list j))
-      (list i)))
+      (cons i (from-to (+ i 1) j))
+       '()
+       
+    ))
 
 ; ; test
-(test (from-to 0 0) (list 0))
-(test (from-to 0 3) (list 0 1 2 3))
+(test (from-to 0 1) (list 0))
+(test (from-to 0 3) (list 0 1 2))
+(test (from-to 3 0) '())
 
 
 ; ; mysterious-list :: Integer -> ListOf Float
-(define (mysteriour-list))
+; ;  devuelve una lista tal que el i-ésimo elemento es calculado como la resta
+; ; de la evaluación (utilizando eval o eval2) de (mysterious-cf i ) menos 3. Luego
+; ; de evaluar cada elemento, utilice la función fl para transformar los números
+; ; fraccionarios a su representación en punto flotante
+(define (mysterious-list n)
+  (map fl
+       (map (lambda (i) (- i 3))
+         (map eval 
+            (map mysterious-cf (from-to 0 n))
+         )
+      )
+   ))
+
+; ; test
+(test (mysterious-list 0)  '())
+(test (mysterious-list 1) (list 3.0))
+(test (mysterious-list 2) (list 3.0 3.1666666666666665))
+(test (mysterious-list 3) (list 3.0 3.1666666666666665 3.1333333333333333))
+
+; ; rac-to-cf :: Rational -> CFraction
+; ; que transforma un número racional no-negativo en su representación en forma
+; ; de fracción continua
+(define (rac-to-cf r)
+  (if (= r (floor r))
+      (simple r)
+      (compound (floor r) 1
+               (rac-to-cf (/ 1 (- r (floor r)))))))
+; ; test
+(test (rac-to-cf (+ 3 49/200)) (compound 3 1 (compound 4 1 (compound 12 1 (simple 4)))))
