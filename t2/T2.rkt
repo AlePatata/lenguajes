@@ -10,7 +10,7 @@ En caso que afirmativo, indique con quién y sobre qué ejercicio:
 |#
 
 ;;------------ ;;
-;;==== P2 ==== ;;
+;;==== P1 ==== ;;
 ;;------------ ;;
 
 
@@ -35,9 +35,9 @@ En caso que afirmativo, indique con quién y sobre qué ejercicio:
   (p-not p)
   (p-and ps)
   (p-or ps)
-  (where x p)
-  (id x)
-  )
+  (p-where p1 x p2)
+  (p-id x)
+)
 
 
 ;;----- ;;
@@ -47,26 +47,41 @@ En caso que afirmativo, indique con quién y sobre qué ejercicio:
 #|
 Concrete syntax of propositions:
 
-<s-prop> ::= true
-          | false
-          | (list 'p-not <s-prop>)
-          | (list 'p-and <s-prop> <s-prop>)
-          | (list 'p-or <s-prop> <s-prop>)
-          | (list 'where (list <sym> <s-prop>))
+<s-prop> ::= tt
+          | ff
+          | (list 'not <s-prop>)
+          | (list 'and <s-prop> <s-prop>)
+          | (list 'or <s-prop> <s-prop>)
+          | (list <s-prop> 'where (list <sym> <s-prop>))
           | <sym>
 |#
 
 ;; parse-prop : <s-prop> -> Prop
 (define (parse-prop s-prop) 
   (match s-prop
-    [(? true? tt) (true tt)]
-    [(? false? ff) (false ff)]
-    [(list 'p-not sprop) (not (parse sprop))]
-    [(list 'p-and l-sprop r-sprop) (and (parse l-sprop) (parse r-sprop))]
-    [(list 'p-or l-sprop r-sprop) (or (parse l-sprop) (parse r-sprop))]
-    [(list 'where (list (? symbol? x) sprop))
-     (where x (parse sprop))]
-    [(? symbol? x) (id x)] 
+    ['true (tt)]
+    ['false (ff)]
+    [(? symbol? x) (p-id x)] 
+    [(list 'not sprop) (p-not (parse-prop sprop))]
+
+    [(list 'and) (error 'parse-prop "and expects at least two operands")]
+    [(list 'and first) (error 'parse-prop "and expects at least two operands") ]
+    [(list 'and first rest ...) 
+      (p-and (cons (parse-prop first)
+                   (map parse-prop rest)
+      ))
+    ]
+
+    [(list 'or) (error 'parse-prop "or expects at least two operands")]
+    [(list 'or first) (error 'parse-prop "or expects at least two operands") ]
+    [(list 'or first rest ...) 
+      (p-or (cons (parse-prop first)
+                  (map parse-prop rest)
+      ))
+    ]
+
+    [(list sprop 'where (list (? symbol? x) second-sprop))
+     (p-where (parse-prop sprop) x (parse-prop second-sprop))]
   ))
 
 
@@ -76,13 +91,22 @@ Concrete syntax of propositions:
 
 
 #|
-<value> ::= ...
+<value> ::= ttV
+         | ffV 
 |#
 
-;; (deftype PValue ...)
+(deftype PValue 
+  (ttV)
+  (ffV)
+)
+
 
 ;; from-Pvalue : PValue -> Prop
-(define (from-Pvalue p-value) '???)
+(define (from-PValue p-value) 
+  (match p-value
+    [(ttV) (tt)]
+    [(ffV) (ff)]
+  ))
 
 
 ;;----- ;;
@@ -91,7 +115,32 @@ Concrete syntax of propositions:
 
 
 ;; p-subst : Prop Symbol Prop -> Prop
-(define (p-subst target name substitution) '???)
+;; (subst target name substitution)
+;; substituye todas las ocurrencias libres del identificador 'name'
+;; en la proposición 'target' por la proposición 'substitution'
+(define (p-subst target name substitution) 
+  (match target
+    [(tt) (tt)]
+    [(ff) (ff)]
+    [(p-not p) (p-not (p-subst p name substitution))]
+
+    
+    [(p-and ps) (p-and (map (lambda (p) (p-subst p name substitution)) ps))]
+
+    [(p-or ps) (p-or (map (lambda (p) (p-subst p name substitution)) ps))]
+
+    [(p-id x) 
+      (if (symbol=? x name)
+        substitution
+        (p-id x)
+    )]
+    [(p-where p1 x p2)
+      (if (symbol=? x name)
+        (p-where p1 x p2)
+        (p-where (p-subst p1 name substitution) x p2)
+    )]
+        
+))
 
 
 ;;----- ;;
@@ -100,17 +149,47 @@ Concrete syntax of propositions:
 
 
 ;; eval-or : (Listof Prop) -> PValue
-(define (eval-or ps) '???)
+(define (eval-or ps) 
+  (if (null? ps)
+    (error "eval-or expects at least one operand")
+    (let ((first (p-eval (car ps))))
+      (if (equal? first (ttV))
+        (ttV)
+        (if (null? (cdr ps))
+          first
+          (eval-or (cdr ps)))))))
 
 ;; eval-and : (Listof Prop) -> PValue
-(define (eval-and ps) '???)
+(define (eval-and ps) 
+  (if (null? ps)
+    (error "eval-and expects at least one operand")
+    (let ((first (p-eval (car ps))))
+      (if (equal? first (ffV))
+        (ffV)
+        (if (null? (cdr ps))
+          first
+          (eval-and (cdr ps)))))))
+
 
 ;; p-eval : Prop -> PValue
-(define (p-eval p) '???)
+(define (p-eval p) 
+  (match p
+    [(tt) (ttV)]
+    [(ff) (ffV)]
+    [(p-not p) (if (equal? (p-eval p) (ttV))
+                  (ffV)
+                  (ttV)
+    )]
+    [(p-and p) (eval-and p)]
+    [(p-or p) (eval-or p)]
+    [(p-where p1 x p2) (p-eval (p-subst p1 x p2))]
+    [(p-id x) (error 'p-eval "Open proposition (free occurrence of ~a)" x)
+    ]
+  ))
 
 ;;------------ ;;
 ;;==== P2 ==== ;;
-;;------------ ;;
+;;------------ ;; 
 
 ;;----- ;;
 ;; P2.a ;;
@@ -118,19 +197,23 @@ Concrete syntax of propositions:
 
 
 #|
-<expr> ::= ...
+<expr> ::= (real <num>)
+        | (imaginary <num>)
         | (add <expr> <expr>)
         | (sub <expr> <expr>)
         | (if0 <expr> <expr> <expr>)
-        | ...
+        | (id <sym>)
+        | (with <sym> <expr> <expr>)
 |#
 (deftype Expr
-  ; ...
+  (real n)
+  (imaginary n)
   (add l r)
   (sub l r)
   (if0 c t f)
-  ; ...
-  )
+  (id x)
+  (with expr body)
+)
 
 ;;----- ;;
 ;; P2.b ;;
@@ -139,23 +222,38 @@ Concrete syntax of propositions:
 #|
 Concrete syntax of expressions:
 
-<s-expr> ::= ...
-        | (+ <s-expr> <s-expr>)
-        | (- <s-expr> <s-expr>)
-        | (if0 <s-expr> <s-expr> <s-expr>)
-        | ...
+<s-expr> ::= <num>
+        | (<num> 'i)
+        | (list + <s-expr> <s-expr>)
+        | (list - <s-expr> <s-expr>)
+        | (list 'if0 <s-expr> <s-expr> <s-expr>)
+        | <sym>
+        | (with (list <sym> <s-expr>) <s-expr>)
 |#
 
 ;; parse : <s-expr> -> Expr
 
-(define (parse s-expr) '???)
+(define (parse s-expr) 
+  (match s-expr
+    [(? number? n) (real n)]
+    [(list n 'i) (imaginary n)]
+    [(? symbol? x) (id x)]
+    [(list '+ l-sexpr r-sexpr) (add (parse l-sexpr) (parse r-sexpr))]
+    [(list '- l-sexpr r-sexpr) (sub (parse l-sexpr) (parse r-sexpr))]
+    [(list 'with (list (list (? symbol? x) sexpr)) body) (with (list (cons x (parse sexpr))) (parse body))]
+    [(list 'with (list (cons x sexpr) rest ...) body)
+      (with (cons (parse (list 'with (list x sexpr) body))
+                  (map parse (list 'with (list (cons (car rest) (cdr rest))) body))))]
+  )
+)
 
 ;;----- ;;
 ;; P2.c ;;
 ;;----- ;;
 
 ;; subst :: Expr Symbol Expr -> Expr
-(define (subst in what for) '???)
+(define (subst in what for) 
+  )
 
 ;;----- ;;
 ;; P2.d ;;
@@ -168,16 +266,32 @@ Concrete syntax of expressions:
 (deftype CValue (compV r i))
 
 ;; from-CValue :: CValue -> Expr
-(define (from-CValue v) '???)
+(define (from-CValue v) 
+  (match v
+    [(compV r i) (add (real r) (imaginary i))]
+))
 
 ;; cmplx+ :: CValue CValue -> CValue
-(define (cmplx+ v1 v2) '???)
+(define (cmplx+ v1 v2) 
+  (match (list v1 v2)
+    [(list (compV r1 i1) (compV r2 i2)) (compV (+ r1 r2) (+ i1 i2))]
+))
 
 ;; cmplx- :: CValue CValue -> CValue
-(define (cmplx- v1 v2) '???)
+(define (cmplx- v1 v2) 
+  (match (list v1 v2)
+    [(list (compV r1 i1) (compV r2 i2)) (compV (- r1 r2) (- i1 i2))]
+))
 
 ;; cmplx0? :: CValue -> Boolean
-(define (cmplx0? v) '???)
+(define (cmplx0? v) 
+  (match v
+    [(compV r i)
+      (if (and (zero? r) (zero? i))
+        #t
+        #f
+    )]
+))
 
 
 ;;----- ;;
