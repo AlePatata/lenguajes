@@ -201,18 +201,16 @@ Concrete syntax of propositions:
         | (imaginary <num>)
         | (add <expr> <expr>)
         | (sub <expr> <expr>)
-        | (if0 <expr> <expr> <expr>)
         | (id <sym>)
-        | (with <sym> <expr> <expr>)
+        | (with [(<sym> <expr>)*] <expr>)
 |#
 (deftype Expr
   (real n)
   (imaginary n)
   (add l r)
   (sub l r)
-  (if0 c t f)
   (id x)
-  (with expr body)
+  (with par body)
 )
 
 ;;----- ;;
@@ -224,11 +222,10 @@ Concrete syntax of expressions:
 
 <s-expr> ::= <num>
         | (<num> 'i)
-        | (list + <s-expr> <s-expr>)
-        | (list - <s-expr> <s-expr>)
-        | (list 'if0 <s-expr> <s-expr> <s-expr>)
         | <sym>
-        | (with (list <sym> <s-expr>) <s-expr>)
+        | (list '+ <s-expr> <s-expr>)
+        | (list '- <s-expr> <s-expr>)
+        | (list 'with (list <sym> <s-expr>) <s-expr>)
 |#
 
 ;; parse : <s-expr> -> Expr
@@ -236,14 +233,15 @@ Concrete syntax of expressions:
 (define (parse s-expr) 
   (match s-expr
     [(? number? n) (real n)]
-    [(list n 'i) (imaginary n)]
+    [(list (? number? n) 'i) (imaginary n)]
     [(? symbol? x) (id x)]
     [(list '+ l-sexpr r-sexpr) (add (parse l-sexpr) (parse r-sexpr))]
     [(list '- l-sexpr r-sexpr) (sub (parse l-sexpr) (parse r-sexpr))]
-    [(list 'with (list (list (? symbol? x) sexpr)) body) (with (list (cons x (parse sexpr))) (parse body))]
-    [(list 'with (list (cons x sexpr) rest ...) body)
-      (with (cons (parse (list 'with (list x sexpr) body))
-                  (map parse (list 'with (list (cons (car rest) (cdr rest))) body))))]
+    [(list 'with body) (error 'parse "'with' expects at least one definition")]
+    [(list 'with pairs body)
+      (with (map (lambda (par) (cons (car par) (parse (car (cdr par)))))
+            pairs)
+            (parse body))]
   )
 )
 
@@ -251,9 +249,48 @@ Concrete syntax of expressions:
 ;; P2.c ;;
 ;;----- ;;
 
+;; aux-subst :: ListOf(Symbol Expr) Symbol Expr -> Expr
+; Dada una lista de pares (variable, expresion) y una variable y una expresion
+; reemplaza todas las ocurrencias de la variable por la expresion en la lista
+(define (aux-subst pairs what for) 
+  (map (lambda (par)
+         (let ([var (car par)] 
+               [expr (cdr par)])
+           (if (symbol=? var what)
+               (cons var for)  ; Keep var unchanged, replace its value
+               (cons var (subst expr what for)))))  ; Substitute expr
+       pairs)
+)
+
+
 ;; subst :: Expr Symbol Expr -> Expr
+; Realiza la substitución de una expresión por un identificador
 (define (subst in what for) 
-  )
+  (match in 
+    [(real n) (real n)]
+    [(imaginary n) (imaginary n)]
+    [(id x) (if (symbol=? x what)
+        for
+        (id x)
+    )]
+    [(add l-expr r-expr) (add (subst l-expr what for) (subst r-expr what for))]
+    [(sub l-expr r-expr) (sub (subst l-expr what for) (subst r-expr what for))]
+    ;[(with body) (error 'subst "'with' expects at least one definition")]
+     
+    [(with pairs body) 
+      (let ([local #f]) 
+        (map (lambda (par)
+                    (if (symbol=? (car par) what)
+                        (set! local #t)
+                        par))  
+                  pairs)
+             (if local
+                 (with pairs body)
+                 (with (aux-subst pairs what for) (subst body what for))
+             )
+        
+      )] 
+  ))
 
 ;;----- ;;
 ;; P2.d ;;
@@ -299,4 +336,18 @@ Concrete syntax of expressions:
 ;;----- ;;
 
 ;; interp : Expr -> CValue
-(define (interp expr) '???)
+; Reduce una expresión (Expr) en un valor del lenguaje (CValue)
+(define (interp expr) 
+  (match expr 
+    [(real n) (compV n 0)]
+    [(imaginary n) (compV 0 n)]
+    [(id x) x]
+    [(add l r) (cmplx+ (interp l) (interp r))]
+    [(sub l r) (cmplx- (interp l) (interp r))]
+    
+    [(with pairs body)
+      (interp 
+        (car (cdr (cdr (subst (with pairs body) QUE-VARIABLE? POR-CUAL-OTRA?)))) ; -->body con defs aplicadas
+    )]
+  ))
+ 

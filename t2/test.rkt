@@ -56,26 +56,74 @@
 (test (p-eval (p-where (p-id 'x) 'x (tt))) (ttV))
 
 ;; P2.b ;;
-(test (parse '(with [(x 1)] (+ x 1))) (with (list (cons 'x (real 1))) (add (id 'x) (real 1)) ))
+(test/exn (parse '(with (+ 1 1))) "parse: 'with' expects at least one definition")
+(test (parse '(with ([x 1]) (+ x x))) 
+      (with (list (cons 'x (real 1))) (add (id 'x) (id 'x)) 
+               ) 
+      )
 
 ; tests de enunciado
 (test (parse '1) (real 1))
 (test (parse '(1 i )) (imaginary 1))
 (test (parse '(+ 1 (2 i ))) (add (real 1) (imaginary 2)))
-(test  (parse '(with [(x 1) (y 1)] (+ x y)))
-    (with ( list (cons 'x ( real 1)) (cons 'y ( real 1))) (add (id 'x) (id 'y))))
+
+(test (parse '(with [ (x 2) (y (+ x 1)) ] (+ x y)))
+    (with (list (cons 'x (real 2)) (cons 'y (add (id 'x) (real 1)))) (add (id 'x) (id 'y))))
+
+(test (parse '(with [(x 1) (y 1)] (+ x y)))
+      (with (list (cons 'x (real 1)) (cons 'y (real 1))) 
+            (add (id 'x) (id 'y))))
+(test (parse '(with [ (x 2) (y z) ] (+ x z))) 
+    (with (list (cons 'x (real 2)) (cons 'y (id 'z))) (add (id 'x) (id 'z))))
+
+(test (parse '(with [ (x 2) (y x) ] (+ x x))) 
+    (with (list (cons 'x (real 2)) (cons 'y (id 'x))) (add (id 'x) (id 'x))))
 
 
 ;; P2.c ;;
-; tests de enunciado
-(test (subst (parse ' (with [ (x 2) (y z) ] (+ x z))) 'z ( real 1))
-(with ( list (cons 'x ( real 2)) (cons 'y ( real 1))) (add (id 'x) ( real 1))))
-(test (subst (parse ' (with [ (x 2) (y x)] (+ x x))) 'x ( real 1))
-(with ( list (cons 'x ( real 2)) (cons 'y (id 'x))) (add (id 'x) (id 'x))))
+(test (subst (id 'y) 'x (real 1)) (id 'y))
+(test (subst (id 'x) 'x (real 1)) (real 1))
+(test (subst (add (id 'x) (id 'x)) 'x (real 1)) (add (real 1) (real 1)))
+(test (subst (sub (id 'x) (id 'y)) 'x (real 1)) (sub (real 1) (id 'y)))
+(test (subst (with (list (cons 'x (real 2)) (cons 'y (id 'z))) (add (id 'x) (id 'z)))
+             'z
+             (real 1))
+      (with (list (cons 'x (real 2)) (cons 'y (real 1))) (add (id 'x) (real 1))))
 
+; tests de enunciado
+(test (subst (parse '(with [ (x 2) (y z) ] (+ x z))) 
+             'z 
+             (real 1))
+      (with (list (cons 'x (real 2)) (cons 'y (real 1))) (add (id 'x) (real 1))))
+
+(test (subst (parse '(with [(x 2) (y x)] (+ x x))) 
+             'x 
+             (real 1))
+      (with (list (cons 'x (real 2)) (cons 'y (id 'x))) (add (id 'x) (id 'x))))
 
 ;; P2.d ;;
 ; tests de enunciado
 (test (cmplx+ (compV 1 2) (compV 3 4)) (compV 4 6))
 (test (cmplx- (compV 1 2) (compV 3 4)) (compV -2 -2))
 (test (cmplx0? (compV 0 1)) #f)
+
+;; P2.e ;;
+(test (interp (real 1)) (compV 1 0))
+(test (interp (imaginary 1)) (compV 0 1))
+(test (interp (add (real 1) (imaginary 2))) (compV 1 2))
+(test (interp (add (real 1) (real 2))) (compV 3 0))
+(test (interp (add (imaginary 1) (imaginary 2))) (compV 0 3))
+
+(test (interp (sub (real 1) (imaginary 2))) (compV 1 -2))
+(test (interp (sub (real 2) (real 1))) (compV 1 0))
+(test (interp (sub (imaginary 2) (imaginary 1))) (compV 0 1))
+
+(test (interp (with (list (cons 'x (real 1))) 
+                    (add (id 'x) (imaginary 1))))
+      (compV 1 1))
+
+#|(test (interp (with (list (cons 'x (real 1)) 
+                          (cons 'y (imaginary 2))) 
+                    (add (id 'x) (id 'y))))
+      (compV 1 2))
+|#
