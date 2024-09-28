@@ -6,7 +6,12 @@
 ;; P1.b ;;
 (test/exn (parse-prop '(and)) "parse-prop: and expects at least two operands")
 (test/exn (parse-prop '(and true)) "parse-prop: and expects at least two operands")
+(test/exn (parse-prop '(or)) "parse-prop: or expects at least two operands")
+(test/exn (parse-prop '(or true)) "parse-prop: or expects at least two operands")
 (test (parse-prop '(and true false)) (p-and (list (tt) (ff))) )
+(test (parse-prop '(or true false)) (p-or (list (tt) (ff))) )
+(test (parse-prop '(false where [y false])) (p-where (ff) 'y (ff)) )
+(test (parse-prop '(y where [x false])) (p-where (p-id 'y) 'x (ff)) )
 
 ;; tests de enunciado
 (test (parse-prop '(not true)) (p-not (tt)))
@@ -25,7 +30,10 @@
 (test (p-subst (ff) 'x (tt)) (ff))
 (test (p-subst (p-not (tt)) 'x (ff)) (p-not (tt)))
 (test (p-subst (p-not (ff)) 'x (tt)) (p-not (ff)))
-;(test (p-subst (p-and (list (tt) (p-id 'x))) 'x (tt)) (p-and (tt) (tt)))
+(test (p-subst (p-and (list (tt) (tt))) 'x (tt)) (p-and (list (tt) (tt))))
+(test (p-subst (p-and (list (tt) (ff))) 'x (tt)) (p-and (list (tt) (ff))))
+(test (p-subst (p-or (list (tt) (tt))) 'x (tt)) (p-or (list (tt) (tt))))
+(test (p-subst (p-or (list (tt) (ff))) 'x (tt)) (p-or (list (tt) (ff))))
 
 ;; tests de enunciado
 (test (p-subst (p-id 'x) 'x (tt)) (tt))
@@ -54,9 +62,11 @@
 (test (p-eval (p-or (list (ff) (ff) (ff)))) (ffV))
 
 (test (p-eval (p-where (p-id 'x) 'x (tt))) (ttV))
+(test/exn (p-eval (p-where (p-id 'x) 'y (tt))) "p-eval: Open proposition (free occurrence of x)")
 
 ;; P2.b ;;
 (test/exn (parse '(with (+ 1 1))) "parse: 'with' expects at least one definition")
+
 (test (parse '(with ([x 1]) (+ x x))) 
       (with (list (cons 'x (real 1))) (add (id 'x) (id 'x)) 
                ) 
@@ -80,11 +90,15 @@
     (with (list (cons 'x (real 2)) (cons 'y (id 'x))) (add (id 'x) (id 'x))))
 
 
-;; P2.c ;;
+;; P2.d ;;
 (test (subst (id 'y) 'x (real 1)) (id 'y))
 (test (subst (id 'x) 'x (real 1)) (real 1))
 (test (subst (add (id 'x) (id 'x)) 'x (real 1)) (add (real 1) (real 1)))
 (test (subst (sub (id 'x) (id 'y)) 'x (real 1)) (sub (real 1) (id 'y)))
+
+(test (subst (with (list (cons 'x (real 1))) (real 3)) 'x (real 2)) 
+      (with (list (cons 'x (real 1))) (real 3)))
+
 (test (subst (with (list (cons 'x (real 2)) (cons 'y (id 'z))) (add (id 'x) (id 'z)))
              'z
              (real 1))
@@ -101,7 +115,9 @@
              (real 1))
       (with (list (cons 'x (real 2)) (cons 'y (id 'x))) (add (id 'x) (id 'x))))
 
-;; P2.d ;;
+;; P2.c ;;
+(test (cmplx+ (compV 1 -2) (compV -3 4)) (compV -2 2))
+(test (cmplx- (compV 1 -2) (compV -3 4)) (compV 4 -6))
 ; tests de enunciado
 (test (cmplx+ (compV 1 2) (compV 3 4)) (compV 4 6))
 (test (cmplx- (compV 1 2) (compV 3 4)) (compV -2 -2))
@@ -118,12 +134,19 @@
 (test (interp (sub (real 2) (real 1))) (compV 1 0))
 (test (interp (sub (imaginary 2) (imaginary 1))) (compV 0 1))
 
+(test (interp (with '() 
+              (real 1)))
+      (compV 1 0))
+
+(test (interp (with (list (cons 'x (real 2))) 
+              (real 1)))
+      (compV 1 0))
+      
 (test (interp (with (list (cons 'x (real 1))) 
                     (add (id 'x) (imaginary 1))))
       (compV 1 1))
 
-#|(test (interp (with (list (cons 'x (real 1)) 
+(test (interp (with (list (cons 'x (real 1)) 
                           (cons 'y (imaginary 2))) 
                     (add (id 'x) (id 'y))))
       (compV 1 2))
-|#

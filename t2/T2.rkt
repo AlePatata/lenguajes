@@ -2,7 +2,7 @@
 
 #|
 
-Hizo Ud uso de la whiteboard policy: (Indique SI/NO)
+Hizo Ud uso de la whiteboard policy: (Indique SI/NO) NO, solo consultas al aux
 En caso que afirmativo, indique con quién y sobre qué ejercicio:
 -
 -
@@ -57,6 +57,7 @@ Concrete syntax of propositions:
 |#
 
 ;; parse-prop : <s-prop> -> Prop
+; Parsea una proposición en notación concreta a una proposición en notación abstracta
 (define (parse-prop s-prop) 
   (match s-prop
     ['true (tt)]
@@ -64,21 +65,24 @@ Concrete syntax of propositions:
     [(? symbol? x) (p-id x)] 
     [(list 'not sprop) (p-not (parse-prop sprop))]
 
+    ; Caso 'and sin argumentos
     [(list 'and) (error 'parse-prop "and expects at least two operands")]
-    [(list 'and first) (error 'parse-prop "and expects at least two operands") ]
     [(list 'and first rest ...) 
-      (p-and (cons (parse-prop first)
+      (if (null? rest) ; Caso 'and con un solo argumento
+        (error 'parse-prop "and expects at least two operands")
+        (p-and (cons (parse-prop first)
                    (map parse-prop rest)
-      ))
-    ]
-
+        ))
+    )]
+    ; Caso 'or sin argumentos
     [(list 'or) (error 'parse-prop "or expects at least two operands")]
-    [(list 'or first) (error 'parse-prop "or expects at least two operands") ]
     [(list 'or first rest ...) 
-      (p-or (cons (parse-prop first)
+      (if (null? rest) ; Caso 'or con un solo argumento
+        (error 'parse-prop "or expects at least two operands")
+        (p-or (cons (parse-prop first)
                   (map parse-prop rest)
-      ))
-    ]
+        ))
+    )]
 
     [(list sprop 'where (list (? symbol? x) second-sprop))
      (p-where (parse-prop sprop) x (parse-prop second-sprop))]
@@ -100,8 +104,9 @@ Concrete syntax of propositions:
   (ffV)
 )
 
-
 ;; from-Pvalue : PValue -> Prop
+; Convierte un valor de verdad en una proposición, los únicos
+; casos válidos son ttV y ffV
 (define (from-PValue p-value) 
   (match p-value
     [(ttV) (tt)]
@@ -115,29 +120,30 @@ Concrete syntax of propositions:
 
 
 ;; p-subst : Prop Symbol Prop -> Prop
-;; (subst target name substitution)
-;; substituye todas las ocurrencias libres del identificador 'name'
-;; en la proposición 'target' por la proposición 'substitution'
-(define (p-subst target name substitution) 
-  (match target
+;; (subst in what for)
+;; substituye todas las ocurrencias libres del identificador 'what'
+;; en la proposición 'in' por la proposición 'for'
+(define (p-subst in what for) 
+  (match in
     [(tt) (tt)]
     [(ff) (ff)]
-    [(p-not p) (p-not (p-subst p name substitution))]
+    [(p-not p) (p-not (p-subst p what for))]
 
-    
-    [(p-and ps) (p-and (map (lambda (p) (p-subst p name substitution)) ps))]
+    [(p-and ps) 
+      (p-and (map (lambda (p) (p-subst p what for)) ps))]
 
-    [(p-or ps) (p-or (map (lambda (p) (p-subst p name substitution)) ps))]
+    [(p-or ps) 
+      (p-or (map (lambda (p) (p-subst p what for)) ps))]
 
     [(p-id x) 
-      (if (symbol=? x name)
-        substitution
+      (if (symbol=? x what)
+        for
         (p-id x)
     )]
     [(p-where p1 x p2)
-      (if (symbol=? x name)
+      (if (symbol=? x what)
         (p-where p1 x p2)
-        (p-where (p-subst p1 name substitution) x p2)
+        (p-where (p-subst p1 what for) x p2)
     )]
         
 ))
@@ -229,7 +235,7 @@ Concrete syntax of expressions:
 |#
 
 ;; parse : <s-expr> -> Expr
-
+; Parsea una expresión en notación concreta a una expresión en notación abstracta
 (define (parse s-expr) 
   (match s-expr
     [(? number? n) (real n)]
@@ -246,7 +252,7 @@ Concrete syntax of expressions:
 )
 
 ;;----- ;;
-;; P2.c ;;
+;; P2.d ;;
 ;;----- ;;
 
 ;; aux-subst :: ListOf(Symbol Expr) Symbol Expr -> Expr
@@ -275,25 +281,23 @@ Concrete syntax of expressions:
     )]
     [(add l-expr r-expr) (add (subst l-expr what for) (subst r-expr what for))]
     [(sub l-expr r-expr) (sub (subst l-expr what for) (subst r-expr what for))]
-    ;[(with body) (error 'subst "'with' expects at least one definition")]
-     
+    
     [(with pairs body) 
       (let ([local #f]) 
         (map (lambda (par)
-                    (if (symbol=? (car par) what)
-                        (set! local #t)
-                        par))  
-                  pairs)
-             (if local
-                 (with pairs body)
-                 (with (aux-subst pairs what for) (subst body what for))
-             )
-        
-      )] 
+          (if (symbol=? (car par) what)
+            (set! local #t)
+            par))  
+          pairs)
+        (if local
+          (with pairs body)
+          (with (aux-subst pairs what for) (subst body what for))
+        )
+    )] 
   ))
 
 ;;----- ;;
-;; P2.d ;;
+;; P2.c ;;
 ;;----- ;;
 
 #|
@@ -303,24 +307,28 @@ Concrete syntax of expressions:
 (deftype CValue (compV r i))
 
 ;; from-CValue :: CValue -> Expr
+; Convierte un valor complejo en una expresión
 (define (from-CValue v) 
   (match v
     [(compV r i) (add (real r) (imaginary i))]
 ))
 
 ;; cmplx+ :: CValue CValue -> CValue
+; Suma dos valores complejos
 (define (cmplx+ v1 v2) 
   (match (list v1 v2)
     [(list (compV r1 i1) (compV r2 i2)) (compV (+ r1 r2) (+ i1 i2))]
 ))
 
 ;; cmplx- :: CValue CValue -> CValue
+; Resta dos valores complejos
 (define (cmplx- v1 v2) 
   (match (list v1 v2)
     [(list (compV r1 i1) (compV r2 i2)) (compV (- r1 r2) (- i1 i2))]
 ))
 
 ;; cmplx0? :: CValue -> Boolean
+; Determina si un valor complejo es 0
 (define (cmplx0? v) 
   (match v
     [(compV r i)
@@ -335,6 +343,7 @@ Concrete syntax of expressions:
 ;; P2.e ;;
 ;;----- ;;
 
+
 ;; interp : Expr -> CValue
 ; Reduce una expresión (Expr) en un valor del lenguaje (CValue)
 (define (interp expr) 
@@ -344,10 +353,10 @@ Concrete syntax of expressions:
     [(id x) x]
     [(add l r) (cmplx+ (interp l) (interp r))]
     [(sub l r) (cmplx- (interp l) (interp r))]
-    
     [(with pairs body)
-      (interp 
-        (car (cdr (cdr (subst (with pairs body) QUE-VARIABLE? POR-CUAL-OTRA?)))) ; -->body con defs aplicadas
-    )]
+      (interp (foldl (lambda (pair body)
+           (subst body (car pair) (cdr pair)))
+         body
+         pairs))]
   ))
  
